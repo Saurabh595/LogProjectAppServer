@@ -1,29 +1,35 @@
 package com.log.project.app.server.forwarder;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.stream.Collectors;
 
 public class LogCapturer implements Runnable
 {
-    public LogCapturer(String mHostName) throws FileNotFoundException
+    public LogCapturer(String hostName) throws IOException
     {
-        this.mHostName = mHostName;
-        mBufferedReader = new BufferedReader(new FileReader("A.txt"));
+        getForwarder(hostName);
+        File logFile = new File(hostName + ".log");
+        logFile.createNewFile();
+        mBufferedReader = new BufferedReader(new FileReader(logFile));
+        mBufferedReader.skip(mForwarder.getLastReadPosition());
     }
 
     @Override
     public void run()
     {
-        while(!ismCancelled())
+        while(!isCancelled())
         {
             String line = null;
             try {
                 line = mBufferedReader.readLine();
                 if(line != null && !line.isEmpty())
                 {
+                    mLastReadPosition += line.length();
                     sendDataToLogServer(line);
                 }
                 else
@@ -43,13 +49,13 @@ public class LogCapturer implements Runnable
         try
         {
             URL url = new URL ("http://localhost:8054/addLog");
+            System.out.println("lastReadPosition = " + mLastReadPosition);
             HttpURLConnection con = (HttpURLConnection)url.openConnection();
             con.setRequestMethod("POST");
             con.setDoOutput(true);
             con.setRequestProperty("Content-Type", "application/json");
 
-            Gson gson = new Gson();
-            String payload = gson.toJson(new Log(System.currentTimeMillis(), mHostName, line));
+            String payload = mGson.toJson(new RequestBodyLog(line, mForwarder.getId(), mLastReadPosition));
 
             OutputStreamWriter osw = new OutputStreamWriter(con.getOutputStream());
             osw.write(payload);
@@ -67,11 +73,41 @@ public class LogCapturer implements Runnable
         mCancelled = true;
     }
 
-    public boolean ismCancelled() {
+    public boolean isCancelled() {
         return mCancelled;
+    }
+
+    private void getForwarder(String hostName)
+    {
+        try
+        {
+            URL url = new URL ("http://localhost:8054/getForwarder?hostName=" + hostName);
+            HttpURLConnection con = (HttpURLConnection)url.openConnection();
+            con.setRequestMethod("GET");
+
+            int requestCode = con.getResponseCode();
+            if(requestCode == 200)
+            {
+                BufferedReader br = new BufferedReader(new InputStreamReader(con.getInputStream()));
+                String responseBody = br.lines().collect(Collectors.joining());
+                mForwarder = mGson.fromJson(responseBody, Forwarder.class);
+            }
+            else
+            {
+                //TODO throw error
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public Forwarder getForwarder() {
+        return mForwarder;
     }
 
     private final BufferedReader mBufferedReader;
     private volatile boolean mCancelled;
-    private final String mHostName;
+    private Forwarder mForwarder;
+    private final Gson mGson = new GsonBuilder().create();
+    private long mLastReadPosition;
 }

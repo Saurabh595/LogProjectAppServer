@@ -3,13 +3,15 @@ package com.log.project.app.server;
 import com.log.project.app.server.forwarder.LogCapturer;
 
 import java.io.BufferedWriter;
-import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
 
 public class AppServerInstance implements Runnable
 {
-    public AppServerInstance(String hostName) throws FileNotFoundException {
+    public AppServerInstance(String hostName) throws IOException {
         mLogCapturer = new LogCapturer(hostName);
         Thread t = new Thread(mLogCapturer);
         t.start();
@@ -25,10 +27,12 @@ public class AppServerInstance implements Runnable
 
         try
         {
-            BufferedWriter os = new BufferedWriter(new FileWriter("A.txt"));
+            BufferedWriter os = new BufferedWriter(new FileWriter(mLogCapturer.getForwarder().getHostName() + ".log"));
+            os.write("");
+            os.flush();
             for (int i = 0; i < 10; i++)
             {
-                os.append("Hello, sending log to stdout loop = " + i).append("\n");
+                os.append(getFormattedDate() + ", Hello, sending log to stdout loop = " + i).append("\n");
                 os.flush();
                 Thread.sleep(1000);
             }
@@ -38,6 +42,14 @@ public class AppServerInstance implements Runnable
             e.printStackTrace();
         }
         //System.out.println("Hello, sending log to stdout");
+    }
+
+    private String getFormattedDate()
+    {
+        SimpleDateFormat formatter = new SimpleDateFormat("dd-M-yyyy HH:mm:ss");
+        formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        return formatter.format(new Date());
     }
 
     public void stopAppServer()
